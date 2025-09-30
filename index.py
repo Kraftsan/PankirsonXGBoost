@@ -41,6 +41,38 @@ def preprocessData(df):
 
     return X, y
 
+def trainModel(X_train, X_test, y_train, y_test):
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
+
+    # Создание модели XGBoost
+    model = xgb.XGBClassifier(
+        learning_rate=0.01,
+        n_estimators=100,
+        max_depth=5,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        random_state=42,
+        eval_metric='logloss'
+    )
+    model.fit(X_train_scaled, y_train)
+    y_pred = model.predict(X_test_scaled)
+    y_pred_proba = model.predict_proba(X_test_scaled)[:, 1]
+
+    score = accuracy_score(y_test, y_pred)
+    print(score)
+    return model, scaler, y_pred, y_pred_proba
+
+
+def evaluteModel(y_test, y_pred):
+    # Точность
+    accuracy = accuracy_score(y_test, y_pred)
+    print(f'Точность модели {accuracy * 100:.2f}%')
+
+    return accuracy
+
+
 def main():
     df = load_data()
 
@@ -56,7 +88,12 @@ def main():
     print(f"\nРазмер обучающей выборки: {X_train.shape}")
     print(f"Размер тестовой выборки: {X_test.shape}")
 
-    return X, y
-if __name__ == "__main__":
+    # Обучение модели
+    model, scaler, y_pred, y_pred_proba = trainModel(X_train, X_test, y_train, y_test)
 
+    accuracy = evaluteModel(y_test, y_pred)
+
+    return model, accuracy
+
+if __name__ == "__main__":
     model, accuracy = main()
