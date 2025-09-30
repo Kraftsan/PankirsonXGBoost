@@ -56,7 +56,11 @@ def trainModel(X_train, X_test, y_train, y_test):
         random_state=42,
         eval_metric='logloss'
     )
-    model.fit(X_train_scaled, y_train)
+    model.fit(
+        X_train_scaled, y_train,
+        eval_set=[(X_train_scaled, y_train), (X_test_scaled, y_test)],
+        verbose=True
+    )
     y_pred = model.predict(X_test_scaled)
     y_pred_proba = model.predict_proba(X_test_scaled)[:, 1]
 
@@ -69,6 +73,18 @@ def evaluteModel(y_test, y_pred):
     # Точность
     accuracy = accuracy_score(y_test, y_pred)
     print(f'Точность модели {accuracy * 100:.2f}%')
+
+    print("\nОтчет классификации:")
+    print(classification_report(y_test, y_pred))
+
+    # Матрица ошибок
+    cm = confusion_matrix(y_test, y_pred)
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+    plt.title('Матрица ошибок')
+    plt.ylabel('Истинные значения')
+    plt.xlabel('Предсказанные значения')
+    plt.show()
 
     return accuracy
 
