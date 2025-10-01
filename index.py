@@ -16,6 +16,8 @@
 
 import numpy as np
 import pandas as pd
+from numpy.random.mtrand import gamma
+from sklearn.model_selection import StratifiedKFold
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
@@ -41,31 +43,37 @@ def preprocessData(df):
 
     return X, y
 
+
 def trainModel(X_train, X_test, y_train, y_test):
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
 
-    # Создание модели XGBoost
     model = xgb.XGBClassifier(
-        learning_rate=0.01,
-        n_estimators=100,
-        max_depth=5,
-        subsample=0.8,
+        learning_rate=0.05,
+        n_estimators=300,
+        max_depth=4,
+        subsample=0.9,
         colsample_bytree=0.8,
+        gamma=0.1,
+        reg_alpha=0.1,
+        reg_lambda=1.5,
         random_state=42,
-        eval_metric='logloss'
+        eval_metric='logloss',
+        early_stopping_rounds=50
     )
+
     model.fit(
         X_train_scaled, y_train,
-        eval_set=[(X_train_scaled, y_train), (X_test_scaled, y_test)],
-        verbose=True
+        eval_set=[(X_test_scaled, y_test)],
+        verbose=False
     )
+
     y_pred = model.predict(X_test_scaled)
     y_pred_proba = model.predict_proba(X_test_scaled)[:, 1]
 
     score = accuracy_score(y_test, y_pred)
-    print(score)
+    print(f"Точность базовой модели: {score * 100:.2f}%")
     return model, scaler, y_pred, y_pred_proba
 
 
@@ -105,36 +113,41 @@ def plotFeatureImport(model, feature_names):
         print(f'{i+1}. {feature_names[indices[i]]}: {importances[indices[i]]:.4f}%')
 
 def improveModel(X_train, X_test, y_train, y_test, scaler):
-    # настройка гиперпараметров
-    from sklearn.model_selection import GridSearchCV
+    from sklearn.model_selection import GridSearchCV, StratifiedKFold
 
-    # Маштабируем данные
-    X_train_scaler = scaler.fit_transform(X_train)
-    X_test_scaler = scaler.transform(X_test)
+    X_train_scaled = scaler.transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
 
     param_grid = {
-        'n_estimators': [50, 100, 200],
-        'max_depth': [3, 6, 9],
-        'learning_rate': [0.01, 0.1, 0.2],
-        'subsample': [0.8, 0.9, 1.0]
+        'n_estimators': [100, 200],
+        'max_depth': [3, 4, 5],
+        'learning_rate': [0.05, 0.1],
+        'subsample': [0.8, 0.9],
+        'colsample_bytree': [0.8, 0.9],
     }
 
     model = xgb.XGBClassifier(random_state=42)
     grid_search = GridSearchCV(
-        estimator = model,
-        param_grid = param_grid,
-        cv = 5,
-        scoring = 'accuracy',
-        n_jobs = -1,
-        verbose = 1,
+        estimator=model,
+        param_grid=param_grid,
+        cv=StratifiedKFold(n_splits=3, shuffle=True, random_state=42),
+        scoring='accuracy',
+        n_jobs=-1,
+        verbose=1,
     )
 
-    grid_search.fit(X_train_scaler, y_train)
+    grid_search.fit(X_train_scaled, y_train)
 
-    print(f'Лучшие параметры {grid_search.best_params_}')
-    print(f'Лучшая точность {grid_search.best_score_:.4f}')
+    print(f'Лучшие параметры: {grid_search.best_params_}')
+    print(f'Лучшая точность на кросс-валидации: {grid_search.best_score_ * 100:.2f}%')
 
-    return grid_search.best_estimator_
+    # оценим на тестовых данных
+    best_model = grid_search.best_estimator_
+    y_pred_improved = best_model.predict(X_test_scaled)
+    improved_accuracy = accuracy_score(y_test, y_pred_improved)
+    print(f'Точность улучшенной модели на тесте: {improved_accuracy * 100:.2f}%')
+
+    return best_model
 
 def main():
     df = load_data()
@@ -161,6 +174,11 @@ def main():
 
     # Улучшение модели
     improved_model = improveModel(X_train, X_test, y_train, y_test, scaler)
+
+    X_test_scaled = scaler.transform(X_test)
+    y_pred_improved = improved_model.predict(X_test_scaled)
+    improved_accuracy = accuracy_score(y_test, y_pred_improved)
+    print(f'Точность улучшенной модели {improved_accuracy*100:.2f}%')
 
     return model, accuracy
 
